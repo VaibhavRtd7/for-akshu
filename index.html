@@ -896,6 +896,13 @@ html, body{ max-width:100%; overflow-x:hidden; }
   </div>
 </section>
 
+<!-- Background song: drop your own mp3 at audio/song.mp3 (see the guide
+     you were given) and this element plays it. Hidden — the floating
+     pill below is the only visible control. -->
+<audio id="bgAudio" loop preload="none">
+  <source src="audio/song.mp3" type="audio/mpeg">
+</audio>
+
 <!-- ============================== FLOATING MUSIC PLAYER ============================== -->
 <div class="player" id="player">
   <button class="player-btn" id="playBtn">▶</button>
@@ -1339,130 +1346,53 @@ html, body{ max-width:100%; overflow-x:hidden; }
 })();
 
 /* ---------------------------------------------------------------------
-   11. FLOATING MUSIC PLAYER — a fully self-composed ambient piece,
-       generated live with the Web Audio API. No external mp3/asset
-       is loaded, so the music travels inside this single HTML file
-       and plays instantly on GitHub Pages with zero extra requests.
+   11. FLOATING MUSIC PLAYER — plays a static audio file you host
+       yourself, from audio/song.mp3 (see the <audio> tag above).
 
-       Three layers, all soft sine/triangle tones run through a gentle
-       low-pass filter plus a short feedback delay (a cheap, lightweight
-       stand-in for reverb) so it feels warm and spacious rather than
-       "beepy":
-         - pad:      slow, held chords underneath everything
-         - arpeggio: a gentle rising/falling sparkle on top
-         - bass:     one soft low note per chord, for warmth
-
-       Prefer a real song instead? Drop an mp3 next to this file and
-       swap this whole block for a plain <audio src="yourfile.mp3">
-       element — the play button and progress bar markup already fit.
+       Add your own mp3 there (a copy you're legally allowed to use —
+       e.g. one you've purchased or already own) and it plays with no
+       internet dependency, no third-party embed, no flakiness.
    --------------------------------------------------------------------- */
 (function player(){
+  const audio = document.getElementById('bgAudio');
   const playerEl = document.getElementById('player');
   const btn = document.getElementById('playBtn');
   const fill = document.getElementById('playerFill');
   const titleEl = playerEl.querySelector('.player-title');
-  if (titleEl) titleEl.textContent = 'our little tune \u266A';
+  if (titleEl) titleEl.textContent = 'Him & I \u2014 G-Eazy, Halsey';
 
-  let playing = false;
-  let audioCtx, master, filter, delay, feedback, wet;
-  let chordTimer, arpTimer, progressTimer, elapsed = 0;
-
-  // A soft, romantic chord progression (I - vi - IV - V feel, in D major)
-  // expressed as frequency stacks. Each inner array = one chord's notes.
-  const progression = [
-    [293.66, 369.99, 440.00],   // D major
-    [246.94, 293.66, 369.99],   // B minor
-    [220.00, 277.18, 329.63],   // G major
-    [196.00, 246.94, 293.66],   // A major
-  ];
-  const bassNotes = [146.83, 123.47, 110.00, 98.00]; // one octave down, root of each chord
-  const CHORD_SECONDS = 4.4;
-  const LOOP_SECONDS = progression.length * CHORD_SECONDS;
-
-  function ensureCtx(){
-    if (audioCtx) return;
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-    master = audioCtx.createGain();
-    master.gain.value = 0.5;
-
-    // soft low-pass so nothing ever sounds harsh
-    filter = audioCtx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = 2200;
-
-    // lightweight delay-based "reverb" — a couple of soft repeats
-    delay = audioCtx.createDelay(1.2);
-    delay.delayTime.value = 0.42;
-    feedback = audioCtx.createGain();
-    feedback.gain.value = 0.28;
-    wet = audioCtx.createGain();
-    wet.gain.value = 0.35;
-
-    delay.connect(feedback); feedback.connect(delay);
-    delay.connect(wet); wet.connect(filter);
-
-    master.connect(filter);
-    master.connect(delay);
-    filter.connect(audioCtx.destination);
-  }
-
-  function tone(freq, time, dur, peak, type){
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = type || 'sine';
-    osc.frequency.value = freq;
-    gain.gain.setValueAtTime(0, time);
-    gain.gain.linearRampToValueAtTime(peak, time + dur * 0.3);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
-    osc.connect(gain); gain.connect(master);
-    osc.start(time); osc.stop(time + dur + 0.05);
-  }
-
-  function scheduleChords(){
-    const now = audioCtx.currentTime + 0.08;
-    progression.forEach((chord, i) => {
-      const t = now + i * CHORD_SECONDS;
-      chord.forEach((freq, vi) => tone(freq, t, CHORD_SECONDS * 0.92, 0.05 + vi * 0.01, 'sine'));
-      tone(bassNotes[i], t, CHORD_SECONDS * 0.95, 0.08, 'triangle');
-    });
-    chordTimer = setTimeout(scheduleChords, LOOP_SECONDS * 1000);
-  }
-
-  function scheduleArpeggio(){
-    const now = audioCtx.currentTime + 0.08;
-    progression.forEach((chord, i) => {
-      const up = [...chord, chord[2] * 2];         // add a sparkle octave on top
-      const t0 = now + i * CHORD_SECONDS;
-      up.forEach((freq, ni) => {
-        tone(freq, t0 + ni * (CHORD_SECONDS / up.length), CHORD_SECONDS / up.length * 1.6, 0.045, 'triangle');
-      });
-    });
-    arpTimer = setTimeout(scheduleArpeggio, LOOP_SECONDS * 1000);
-  }
-
-  function updateProgress(){
-    elapsed = (elapsed + 0.25) % LOOP_SECONDS;
-    fill.style.width = (elapsed / LOOP_SECONDS * 100) + '%';
-  }
+  let fileMissing = false;
 
   btn.addEventListener('click', () => {
-    ensureCtx();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-    playing = !playing;
-    playerEl.classList.toggle('playing', playing);
-    btn.textContent = playing ? '\u275A\u275A' : '\u25B6';
-    if (playing) {
-      elapsed = 0;
-      scheduleChords();
-      scheduleArpeggio();
-      progressTimer = setInterval(updateProgress, 250);
+    if (fileMissing) return;
+    if (audio.paused) {
+      audio.play().catch(() => {
+        // most likely the browser blocked it, or the file still hasn't loaded
+      });
     } else {
-      clearTimeout(chordTimer);
-      clearTimeout(arpTimer);
-      clearInterval(progressTimer);
-      // let the current notes ring out naturally rather than cutting off
+      audio.pause();
     }
+  });
+
+  audio.addEventListener('play', () => {
+    playerEl.classList.add('playing');
+    btn.textContent = '\u275A\u275A';
+  });
+  audio.addEventListener('pause', () => {
+    playerEl.classList.remove('playing');
+    btn.textContent = '\u25B6';
+  });
+  audio.addEventListener('timeupdate', () => {
+    if (audio.duration) fill.style.width = (audio.currentTime / audio.duration * 100) + '%';
+  });
+
+  // If audio/song.mp3 hasn't been added yet, let the button say so
+  // instead of silently doing nothing.
+  audio.addEventListener('error', () => {
+    fileMissing = true;
+    if (titleEl) titleEl.textContent = 'add audio/song.mp3 to enable';
+    btn.textContent = '\u2715';
+    btn.style.opacity = '.5';
   });
 })();
 
